@@ -34,7 +34,7 @@ class pf:
 
     @staticmethod
     def consume_label_argument(s):
-        valid_literals = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy_"
+        valid_literals = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
         literal = ""
         while s.peek() in valid_literals:
             char = next(s)
@@ -62,7 +62,7 @@ class pf:
 
     @staticmethod
     def consume_assembler_instruction(s,line_number):
-        valid_literals = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxy_"
+        valid_literals = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_"
         instruction = ""
         next(s)
         while s.peek() in valid_literals:
@@ -199,7 +199,7 @@ class Parser:
 
     def _second_phase(self):
         if not self.main_label in self.labels:
-            raise UnknownSection(f"No main_label named {label}")
+            raise UndefinedSection(f"No main_label named {self.main_label}")
 
         self.result = list(
             map(
@@ -255,6 +255,7 @@ class Assembler:
                 break
         size = stop-start
         return start,stop,size
+
     #TODO
     def move2base_label(self,parsed : list,labels : dict,main_label : str):
         start,stop,size = self.calculate_base_label(parsed,labels,main_label)
