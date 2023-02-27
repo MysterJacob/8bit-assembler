@@ -139,26 +139,29 @@ class Parser:
         self.main_label = "start"
         self.base = 0
 
+    #Iterator to iterate char by char from file
     def _stream_iterator(self,stream):
         for line in stream:
             yield from iter(line)
         yield "\n"
         stream.close()
 
+    #Using respective parser
     def _use_parser(self,parser):
         result = parser(self.raw_data,self._line)
         if result == None: return
 
 
-        self.result.append( (self._line,self.opcode_index,*result) )
         if result[0] == "l":
             if result[1] in self.labels:
                 raise SyntaxError(f"Second declaration of label {result[1]} at line {self._line}")
             self.labels[result[1]] =\
                 (self._line,self.opcode_index,*result)
         else:
+            self.result.append( (self._line,self.opcode_index,*result) )
             self.opcode_index += 1
 
+    #Parse an assembler instruction
     def assembler_instruction(self,s,line_number):
         instruction,argument = pf.consume_assembler_instruction(s,line_number)
         if instruction == "base":
@@ -169,12 +172,14 @@ class Parser:
             raise SyntaxError(f"Unknown assembler instruction at line {line_number}")
         return None
 
+    #Find valid parser
     def check_parser(self,check,parser):
         if check(self.raw_data):
             self._use_parser(parser)
             return True
         return False
 
+    #Is it eof
     def _is_eof(self):
         try:
             if pf.consume_whs(self.raw_data):
@@ -183,31 +188,14 @@ class Parser:
         except Exception:
             return True
 
+    # Single phase of pharsing
     def _single_parse(self):
         for check,parser in self.parse_tree.items():
             if self.check_parser(check,parser):
                 return
         raise SyntaxError(f"Syntax error at line {self._line}")
 
-    def _replace_labels(self,part : tuple):
-        if part[2] != "o": return part
-        if type(part[-1]) != str: return part
-        label = self.labels.get(part[-1],None)
-        if label == None:
-            raise SyntaxError(f"Unknow label at line {part[0]}")
-        return (*part[:-1],label[1])
-
-    def _second_phase(self):
-        if not self.main_label in self.labels:
-            raise UndefinedSection(f"No main_label named {self.main_label}")
-
-        self.result = list(
-            map(
-                lambda p : self._replace_labels(p),
-                self.result
-            )
-        )
-
+    #Whole parser
     def parse(self):
         while not self._is_eof():
             try:
@@ -219,11 +207,11 @@ class Parser:
                 else:
                     raise e
 
-        self._second_phase()
         return self.result, self.labels, self.main_label, self.base
 
 class Assembler:
-    def write_op(self,data : tuple,stream):
+    #Write opcode to file
+    def write_op(self,data : tuple,stream,base_offset : int):
         line,index,type,*info = data
         if type != "o": return
         opcode,argument = info
@@ -244,42 +232,78 @@ class Assembler:
         stream.seek(index*2)
         stream.write(bytes([argument,opcode_value]))
 
+    #Calculate offset based on main label
     def calculate_base_label(self,parsed,labels : dict,main_label : str):
         label = labels.get(main_label)
-        line,index,type,name = label
-        start = index
-        stop = len(parsed)-1
-        for i,next_parsed in enumerate(parsed[line:]):
-            if  next_parsed[2] == "l":
-                stop = start + i 
-                break
+        line,instruction_index,type,name = label
+
+        start = instruction_index
+        stop = len(parsed)
+        size = stop-start
+
+        if len(labels) == 1:
+            return start,stop,size
+
+        label_names = list(labels.keys())
+        next_label_index = label_names.index(main_label) + 1
+
+        if next_label_index  >= len(labels):
+            return start,stop,size
+
+        _,index,*_ = list(labels.values())[next_label_index]
+        stop = index
         size = stop-start
         return start,stop,size
 
-    #TODO
-    def move2base_label(self,parsed : list,labels : dict,main_label : str):
+    #Move everything by offset calculater earlier 
+    def move2base_label(self,parsed : list,labels : dict,main_label : str,base_offset : int):
         start,stop,size = self.calculate_base_label(parsed,labels,main_label)
-        print(start,stop,size)
+
         new_base_label_index = 0
-        for i,data in enumerate(parsed[:stop+1]):
+
+        for i,data in enumerate(parsed[:stop]):
             line,index,type,*info = data
             if index >= start and index < stop:
-                parsed[i] = (line,new_base_label_index,type,*info)
-                if type != "l":
-                    new_base_label_index += 1
+                parsed[i] = (line,new_base_label_index+base_offset,type,*info)
+                new_base_label_index += 1
             else:
-                parsed[i] = (line,index+size,type,*info)
+                parsed[i] = (line,index+size+base_offset,type,*info)
 
+    #Replace label arguments by position 
+    def _replace_labels(self,part : tuple,labels):
+        if part[2] != "o": return part
+        if not isinstance(part[-1],str): return part
+        label = labels.get(part[-1],None)
+        if label == None:
+            raise SyntaxError(f"Unknow label at line {part[0]}")
+        return (*part[:-1],label[1])
+
+    #Replace label arguments by position 
+    def swap_labels(self,main_label,labels,parsed):
+        if not main_label in labels:
+            raise UndefinedSection(f"No main_label named {self.main_label}")
+
+        parsed = list(
+            map(
+                lambda p : self._replace_labels(p,labels),
+                parsed
+            )
+        )
+        return parsed
+
+    #Assemble a file from input
     def assemble(self,input_file_path : str,output_file_path : str):
         p = Parser(input_file_path)
         output_stream = open(output_file_path,"wb+")
         parsed, labels, main_label, base_offset = p.parse()
         print(parsed)
-        self.move2base_label(parsed,labels,main_label)
+        self.move2base_label(parsed,labels,main_label,base_offset)
+        parsed = self.swap_labels(main_label,labels,parsed)
         print(parsed)
+
         try:
             for data in parsed:
-                self.write_op(data,output_stream)
+                self.write_op(data,output_stream,base_offset)
         except Exception as e:
             raise e
         finally:
