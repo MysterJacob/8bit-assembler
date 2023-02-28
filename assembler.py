@@ -28,9 +28,13 @@ class pf:
         return s.peek() == "%"
 
     @staticmethod
-    def consume2lf(s,line_number) -> int:
+    def consume2lf(s):
         while (char := next(s)) != "\n":pass
-        return 1,None
+        return None
+
+    @staticmethod
+    def consume_comment(s,line_number):
+        return ("c",pf.consume2lf(s))
 
     @staticmethod
     def consume_label_argument(s):
@@ -126,7 +130,7 @@ class Parser:
         self.raw_data = peekable(self._stream_iterator(self.stream))
 
         self.parse_tree = {
-            pf.is_comment : pf.consume2lf,
+            pf.is_comment : pf.consume_comment,
             pf.is_label : pf.consume_label,
             pf.is_assembler_instruction : self.assembler_instruction,
             lambda _: True : pf.parse_opcode
@@ -138,6 +142,8 @@ class Parser:
         self.labels = {}
         self.main_label = "start"
         self.base = 0
+        self.padding = None
+        self.static_memory_size = 512
 
     #Iterator to iterate char by char from file
     def _stream_iterator(self,stream):
@@ -157,7 +163,7 @@ class Parser:
                 raise SyntaxError(f"Second declaration of label {result[1]} at line {self._line}")
             self.labels[result[1]] =\
                 (self._line,self.opcode_index,*result)
-        else:
+        elif result[0] == "o":
             self.result.append( (self._line,self.opcode_index,*result) )
             self.opcode_index += 1
 
@@ -168,6 +174,10 @@ class Parser:
             self.base = argument
         elif instruction == "main_label":
             self.main_label = argument
+        elif instruction == "size":
+            self.static_memory_size = argument
+        elif instruction == "padding":
+            self.padding = argument
         else:
             raise SyntaxError(f"Unknown assembler instruction at line {line_number}")
         return None
@@ -207,7 +217,10 @@ class Parser:
                 else:
                     raise e
 
-        return self.result, self.labels, self.main_label, self.base
+        if 2*len(self.result) + self.base > self.static_memory_size:
+            raise OverflowError(b"Out of static memory to program, program may not exceed {self.static_memory_size} bytes")
+
+        return self.result, self.labels, self.main_label, self.base, self.static_memory_size, self.padding
 
 class Assembler:
     #Write opcode to file
@@ -291,16 +304,28 @@ class Assembler:
         )
         return parsed
 
+    def padd(self,stream,mem_size : int,padding : int):
+        for i in range(0,mem_size):
+            stream.seek(i)
+            stream.write(bytes([padding]))
+            stream.flush()
+        stream.seek(0)
+
     #Assemble a file from input
     def assemble(self,input_file_path : str,output_file_path : str):
         p = Parser(input_file_path)
         output_stream = open(output_file_path,"wb+")
-        parsed, labels, main_label, base_offset = p.parse()
+
+        parsed, labels, main_label, base_offset, mem_size, padding = p.parse()
+
+        if padding != None:
+            self.padd(output_stream,mem_size,padding)
+
         print(parsed)
         self.move2base_label(parsed,labels,main_label,base_offset)
         parsed = self.swap_labels(main_label,labels,parsed)
-        print(parsed)
 
+        print(parsed)
         try:
             for data in parsed:
                 self.write_op(data,output_stream,base_offset)
