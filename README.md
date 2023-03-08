@@ -32,3 +32,11 @@ An assembler I made for my 8 bit computer
 | 25	| JZE	| 0x01	0x08	| 0x19	| Jump if zero
 | 26	| TAB	| 0x0C	0x00	| 0x1A	| Transfers A to B
 | 27	| TBA	| 0x13	0x00	| 0x1B	| Transfers B to A
+
+
+Opcode layout:
+|Opcode + ARG| = 2 bytes
+Each opcode takes 2 bytes of memory, every instruction contains opcde in odd position and argument in even position
+
+When running assembler.py, it will produce file **pragram.bin** from **program.ebt**
+
