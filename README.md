@@ -36,6 +36,7 @@ An assembler I made for my 8 bit computer
 
 Opcode layout:
 |Opcode + ARG| = 2 bytes
+
 Each opcode takes 2 bytes of memory, every instruction contains opcde in odd position and argument in even position
 
 When running assembler.py, it will produce file **pragram.bin** from **program.ebt**
