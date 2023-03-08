@@ -32,6 +32,7 @@ An assembler I made for my 8 bit computer
 | 25	| JZE	| 0x01	0x08	| 0x19	| Jump if zero
 | 26	| TAB	| 0x0C	0x00	| 0x1A	| Transfers A to B
 | 27	| TBA	| 0x13	0x00	| 0x1B	| Transfers B to A
+| 28	| JBT	|0x01	0x18	| 0X1C	| Jumps if button pressed
 
 
 Opcode layout:
